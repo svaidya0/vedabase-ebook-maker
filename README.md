@@ -32,7 +32,7 @@ python veda.py
 ```
 Then follow the commands to enter the url of the book.
 
-![] (https://github.com/svaidya0/vedabase-ebook-maker/blob/master/terminal.png)
+![](https://github.com/svaidya0/vedabase-ebook-maker/blob/master/terminal.png)
 
 The script will then create a temporary file _VedabaseEbookTempFile.txt_ which will store the text of ebook until the end of the script where it will be converted into an epub file using the Pandoc wrapper - pypandoc.
 
