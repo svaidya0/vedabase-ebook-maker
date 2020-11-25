@@ -8,17 +8,17 @@ _Note this requires Python 3 to run._
 
 Download the veda.py python script and install the following dependencies:
 
-** requests: **
+**requests:**
 ```
 pip install requests
 ```
 
-** BeautifulSoup 4: **
+**BeautifulSoup 4:**
 ```
 pip install beautifulsoup4
 ```
 
-** PyPandoc: **
+**PyPandoc:**
 ```
 pip install pypandoc
 ```
@@ -32,7 +32,7 @@ python veda.py
 ```
 Then follow the commands to enter the url of the book.
 
-![] (terminal_screenshot.png)
+![] (terminal.png)
 
 The script will then create a temporary file _VedabaseEbookTempFile.txt_ which will store the text of ebook until the end of the script where it will be converted into an epub file using the Pandoc wrapper - pypandoc.
 
