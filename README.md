@@ -43,3 +43,12 @@ The script will then create a temporary file _VedabaseEbookTempFile.txt_ which w
 * GUI interface for input
 * Added options for user such as a variety of output file formats
 * Increased efficiency
+
+## Release History
+
+* 0.2.0
+    * ADD: Added more command line print statements so user can see progress
+    * ADD: Added `writeVerse()` to add support for more books
+    * ADD: Added try except block to catch errors
+* 0.1.0
+    * Initial release

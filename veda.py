@@ -29,16 +29,8 @@ class Book:
         
         # Checks whether it's a book that directly has verses rather than chapters
         self.directVerses = False
-        if (self.soup).find('div', class_="r r-verse"):
+        if (self.soup).find('dl', class_="r r-verse"):
             self.directVerses = True
-        elif (self.soup).find('div', class_="r bb r-lang-en r-chapter"):
-            base_url = "https://vedabase.io"
-            for chapter in (self.soup).find_all('div', class_="r bb r-lang-en r-chapter"):
-                link = chapter.find('a')
-                html = requests.get(base_url + link['href'])
-                link_soup = BeautifulSoup(html.text, 'html.parser' )
-                if link_soup.find('div', class_="r r-lang-en r-translation"):
-                    self.directVerses = True
     
     # Method to the get the  correspondong html soup of a link supplied to it
     def getSoup(self, link):
@@ -55,7 +47,10 @@ class Book:
         url = base_url + str(chapter['href']) + "advanced-view/"
         html = requests.get(url)
         chapter_soup = BeautifulSoup(html.text, 'html.parser' )
+        self.writeVerse(chapter_soup)
 
+    def writeVerse(self, chapter_soup):
+        
         # A string needed for verses
         purport = "**Purport **"
 
@@ -65,8 +60,6 @@ class Book:
             if 'bb' in t['class']:
                 s = '## ' + t.get_text().strip() + '\n'
                 f.write('\n' + s)
-                # Sets p to 0 so the purport string can be used below the verse 
-                p = 0
                 continue
             
             # Adjusts markdown formatting for the actual verses
@@ -77,6 +70,10 @@ class Book:
                 f.write(output)
                 continue
             
+            elif 'r-translation' in t['class']:
+                # Sets p to 0 so the purport string can be used below the verse 
+                p = 0
+
             # Writes the commentary given on the verses
             elif "r-paragraph" in t['class']:
                 if p == 0:
@@ -92,6 +89,10 @@ class Book:
         # Checks whether the chapter contains verses and calls getVerses
         if chapter_soup.find('dl', class_="r r-verse"):
             self.getVerses(chapter_link)
+            return
+        # Checks whether the chapter is a verse and calls writeVerse
+        elif chapter_soup.find('div', class_="r r-lang-en r-synonyms"):
+            self.writeVerse(chapter_soup)
             return
         
         for t in chapter_soup.find_all('div', class_=["r r-lang-en r-verse-text", "r r-lang-en r-paragraph", "r r-lang-en r-paragraph-intro", "r r-lang-en r-sub-chapter", "r r-lang-en r-paragraph-list"]):
@@ -112,8 +113,21 @@ class Book:
     # Iterates through all the cantos and chapters within the book
     def buildBook(self):
 
+        #If the book directly has verses:
+        if self.directVerses:
+            for chapter in (self.soup).find_all('div', class_=["bb r r-lang-en r-chapter", "r-verse"]):
+                chapter_link = chapter.find('a')
+                chapter_soup = self.getSoup(chapter_link)
+                
+                # Gets and formats the title of the chapter
+                title = '# ' + str((chapter.find('a')).get_text()).strip()
+                print('Now getting: ' + str((chapter.find('a')).get_text()).strip())
+                
+                f.write(title + '\n' + '\n')
+                self.writeChapter(chapter_soup, chapter_link)
+
         #If the book has cantos:
-        if self.cantosExist:
+        elif self.cantosExist:
 
             for canto in (self.soup).find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter", "bb r r-canto"]):
                 canto_soup = self.getSoup(canto.find('a'))
@@ -123,6 +137,7 @@ class Book:
                     
                     # Gets and formats the title of the canto
                     title = '# ' + str((canto.find('a')).get_text()).strip()
+                    print('Inside ' + str((canto.find('a')).get_text()).strip() + ':')
                     
                     f.write(title + '\n' + '\n')
 
@@ -132,6 +147,7 @@ class Book:
                         
                         # Gets and formats the title of the chapter
                         title = '## ' + str((chapter.find('a')).get_text()).strip()
+                        print(' Now getting:' + str((chapter.find('a')).get_text()).strip())
                         
                         f.write(title + '\n' + '\n')
                         self.writeChapter(chapter_soup, chapter_link)
@@ -141,6 +157,7 @@ class Book:
                     
                     # Gets and formats the title of the chapter
                     title = '# ' + str((canto.find('a')).get_text()).strip()
+                    print('Now getting:' + str((chapter.find('a')).get_text()).strip())
                     
                     f.write(title + '\n' + '\n')
                     self.writeChapter(canto_soup, chapter_link)
@@ -153,29 +170,40 @@ class Book:
                 
                 # Gets and formats the title of the chapter
                 title = '# ' + str((chapter.find('a')).get_text()).strip()
+                print('Now getting: ' + str((chapter.find('a')).get_text()).strip())
                 
                 f.write(title + '\n' + '\n')
                 self.writeChapter(chapter_soup, chapter_link)
 
 
+###### Main Function (cannot implement as 'def main:' due to opened file)
+
+print("\nVedabase-ebook-maker v0.2.0\n \nPlease enter a valid url from vedabase.io below.")
+
 # User input for url of the book
+
 book_url = str(input("Enter url:" ))
 
-book = Book(book_url)
-book.buildBook()
-f.close()
+try:
+    book = Book(book_url)
+    book.buildBook()
+    f.close()
 
-# Creates name of the ebook file
-f = open('VedabaseEbookTempFile.txt', 'r', encoding="utf-8")
-ebookName = str(f.readline().split('%')[1]).strip() + '.epub'
-ebookName = ebookName.replace(":", "")
-ebookName = ebookName.replace("?", "")
-print(ebookName)
-f.close()
+    # Creates name of the ebook file
+    f = open('VedabaseEbookTempFile.txt', 'r', encoding="utf-8")
+    ebookName = str(f.readline().split('%')[1]).strip() + '.epub'
+    ebookName = ebookName.replace(":", "")
+    ebookName = ebookName.replace("?", "")
+    f.close()
 
-# Converts VedabaseEbookTempFile.txt to an ebook
-pypandoc.convert_file('VedabaseEbookTempFile.txt', 'epub', format ="markdown", outputfile = ebookName)
+    # Converts VedabaseEbookTempFile.txt to an ebook
+    pypandoc.convert_file('VedabaseEbookTempFile.txt', 'epub', format ="markdown", outputfile = ebookName)
 
-# Deletes VedabaseEbookTempFile.txt
-if os.path.exists("VedabaseEbookTempFile.txt"):
-    os.remove("VedabaseEbookTempFile.txt")
+    # Deletes VedabaseEbookTempFile.txt
+    if os.path.exists("VedabaseEbookTempFile.txt"):
+        os.remove("VedabaseEbookTempFile.txt")
+except:
+    f.close()
+    if os.path.exists("VedabaseEbookTempFile.txt"):
+        os.remove("VedabaseEbookTempFile.txt")
+    print("\nSorry there was an error! Please report to svaidya0 on GitHub, thank you :)")
