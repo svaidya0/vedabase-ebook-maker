@@ -38,7 +38,7 @@ The script will then create a temporary file _VedabaseEbookTempFile.txt_ which w
 
 ## Features to be implemented
 
-* Support for all books _(Currently most books on the website are supported but not all)_
+* Support for more languages
 * Methods to catch wrong user input
 * GUI interface for input
 * Added options for user such as a variety of output file formats
@@ -46,6 +46,10 @@ The script will then create a temporary file _VedabaseEbookTempFile.txt_ which w
 
 ## Release History
 
+* 0.3.0
+    * ADD: Now supports all books on the website!
+    * ADD: Added `getChapter()` to replace multiple blocks of identical code
+    * FIX: Fixed some minor formatting bugs
 * 0.2.0
     * ADD: Added more command line print statements so user can see progress
     * ADD: Added `writeVerse()` to add support for more books
