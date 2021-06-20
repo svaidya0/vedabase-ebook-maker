@@ -1,197 +1,137 @@
 import requests
-import io
-import os
-import pypandoc
 from bs4 import BeautifulSoup
+from zipfile import ZipFile
+import os
 
-# Creates a temporary file to store the text for the ebook
-f = open('VedabaseEbookTempFile.txt', 'a', encoding="utf-8")
+def create_contents(chapters_soup, incanto = 0):
+    chapter_link = chapters_soup.find('a')
+    contents.append(base_url + chapter_link['href'])
+    chapter_title = chapter_link.get_text()
+    if chapter_title[-1] == ':':
+        chapter_title = chapter_title[:-1]
+    chapter_titles.append(chapter_title.strip())
+    chapter_id = chapter_title.replace(': ', '-')
+    chapter_id = chapter_id.replace(' ', '-')
+    chapter_ids.append(chapter_id.strip())
+    f = open('epub_contents.xhtml', 'a', encoding="utf-8")
+    f.write('<li><a href="epub_main.xhtml#' + chapter_ids[-1] + '">' + chapter_titles[-1] + '</a>')
+    if not incanto:
+        f.write('</li>\n')
+    f.close()
 
-class Book:
-    def __init__(self, link):
-        # Url of the book
-        self.link = link
+def end_contents():
+    f = open('epub_contents.xhtml', 'a', encoding="utf-8")
+    f.write('</ol>\n</nav>\n</body>\n</html>')
+    f.close()
 
-        # The html for the contents page of the book
-        src = requests.get(self.link)
-        self.soup = BeautifulSoup(src.text, 'html.parser' )
+url = str(input("Enter url:" ))
+base_url = "https://vedabase.io"
+src = requests.get(url)
+soup = BeautifulSoup(src.text, 'html.parser')
 
-        # Gets the title and author of the book
-        titleDiv = (self.soup).find('div', class_="mb-3 bb r r-title r-book")
-        title = '% ' + str( titleDiv.get_text() ).strip()
-        author = '% His Divine Grace A. C. Bhaktivedanta Swami Prabhupāda'
-        f.write(title + '\n' + author + '\n')
+# Creates title page for book
+f = open('epub_title.xhtml', 'a', encoding="utf-8")
+title = soup.find('div', class_="mb-3 bb r r-title r-book").get_text().strip()
+title_html1 = '<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"/><title>'
+title_html2 = '</title></head>\n<body>\n<h1 class="titlepage">'
+title_html3 = '</h1>\n</body></html>'
+f.write(title_html1 + title + title_html2 + title + title_html3)
+f.close()
+
+# Creates contents file
+f = open('epub_contents.xhtml', 'a', encoding="utf-8")
+contents_html1 = '<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n<head>\n<meta charset="utf-8" />\n<title>Contents</title>\n</head>\n<body>\n<nav epub:type="toc" id="toc">\n<h1 class="title">Contents</h1>\n<ol>\n'
+f.write(contents_html1)
+contents = list()
+chapter_ids = list()
+chapter_titles = list()
+f.close()
+
+# If the book directly has verses:
+if soup.find('dl', class_="r r-verse"):
+    for chapters in soup.find_all('div', class_=["bb r r-lang-en r-chapter", "r-verse"]):
+        create_contents(chapters)
+    end_contents()
+
+# If the book has cantos:
+elif soup.find('div', class_=["bb r r-canto", "col-6 col-sm-4 col-md-3 col-lg-2 col-lg-15 text-center book-item"]):
+    for canto in soup.find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter", "bb r r-canto", "col-6 col-sm-4 col-md-3 col-lg-2 col-lg-15 text-center book-item"]):
+        canto_src = requests.get(base_url + (canto.find('a')['href']))
+        canto_soup = BeautifulSoup(canto_src.text, 'html.parser')
         
-    # Method to the get the  correspondong html soup of a link supplied to it
-    def getSoup(self, link, forVerse = 0):
-        base_url = "https://vedabase.io"
+        # If-else block to account for some books having chapters outside cantos 
+        if ('r-canto' in canto['class']) or ('book-item' in canto['class']):
+            create_contents(canto, 1)
+            f = open('epub_contents.xhtml', 'a', encoding="utf-8")
+            f.write('<ol hidden="">\n')
+            f.close()
 
-        if forVerse:
-            # Special case for chapters containing verses
-            html = requests.get(base_url + str(link['href']) + "advanced-view/")
+            for chapter in canto_soup.find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter"] ):
+                create_contents(chapter)
+            f = open('epub_contents.xhtml', 'a', encoding="utf-8")
+            f.write('</ol>\n</li>\n')
+            f.close()
         else:
-            html = requests.get(base_url + link['href'])
-        link_soup = BeautifulSoup(html.text, 'html.parser' )
-        return link_soup
+            create_contents(canto)
+    end_contents()
+
+# If the book doesn't have cantos
+else:
+    for chapter in soup.find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter"]):
+        create_contents(chapter)
+    end_contents()
+
+f = open('epub_main.xhtml', 'a', encoding="utf-8")
+f.write('<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"/><title>' + title + '</title></head><body>\n')
+
+# Gets and writes main text of ebook
+for i in range(len(contents)):
+    f.write('<div id="' + chapter_ids[i] + '">')
+    chapter_src = requests.get(contents[i])
+    chapter_soup = BeautifulSoup(chapter_src.text, 'html.parser')
+
+    if chapter_soup.find('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter"] ):
+        f.write('<h1>' + chapter_titles[i] + '</h1></div>\n')
+        continue
+
+    # If chapter is made of verses
+    if chapter_soup.find('dl', class_="r r-verse"):
+        chapter_src = requests.get(contents[i] + "advanced-view/")
+        chapter_soup = BeautifulSoup(chapter_src.text, 'html.parser')
+
+    divs = chapter_soup.find('div', id='content')
     
-    def writeVerse(self, chapter_soup, inCanto):
-        
-        # For formatting needed for verses
-        purport = "**Purport **"
-        p=1
+    # Removes hyperlinks
+    for urls in divs.find_all('a'):
+        urls.unwrap()
+    
+    f.write(str(divs).strip())
+    f.write('</div>')
+f.write('</body></html>')
+f.close()
 
-        for t in chapter_soup.find_all('div', class_=["bb r-verse", "r r-devanagari", "r r-lang-en r-verse-text", "r r-lang-en r-synonyms", "r r-lang-en r-translation", "r r-lang-en r-paragraph", "r r-bengali"]):
+# Some metadata files
+f = open('package.opf', 'a', encoding="utf-8")
+f.write('<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0">\n<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n<dc:title>' + title + '</dc:title>\n<dc:language>en</dc:language>\n</metadata>')
+f.write('<manifest>\n<item href="epub_title.xhtml" id="ttl" media-type="application/xhtml+xml"/>\n<item href="epub_contents.xhtml" id="nav" media-type="application/xhtml+xml" properties="nav"/>\n<item href="epub_main.xhtml" id="main" media-type="application/xhtml+xml"/>\n</manifest>')
+f.write('<spine>\n<itemref idref="ttl"/>\n<itemref idref="nav" linear="no"/>\n<itemref idref="main"/>\n</spine>\n</package>')
+f.close()
+f = open('mimetype', 'a')
+f.write('application/epub+zip')
+f.close()
 
-            # Verse title - e.g. 'Text 1' - formatted in a way that it's added to contents in the ebook
-            if 'bb' in t['class']:
-                s = '## ' + t.get_text().strip() + '\n'
-                if inCanto:
-                    s = '#' + s
-                f.write('\n' + s)
-                continue
-            
-            # Adjusts markdown formatting for the actual verses
-            elif 'r-verse-text' in t['class']:
-                output = pypandoc.convert_text(str(t), 'markdown', format='html')
-                output = output.replace("**", "*")
-                output = output.replace("*\\", "\\")
-                f.write(output)
-                continue
-            
-            elif 'r-translation' in t['class']:
-                # Sets p to 0 so the purport string can be used below the verse 
-                p = 0
-
-            # Writes the commentary given on the verses
-            elif "r-paragraph" in t['class']:
-                if p == 0:
-                    f.write('\n' + purport + '\n' + '\n')
-                    p = 1
-            
-            output = pypandoc.convert_text(str(t), 'markdown', format='html')
-            # Fixes formatting issue
-            output = output.replace('*"', '"*')
-            f.write(output)
-
-    # Method that saves text from a chapter of the book
-    def writeChapter(self, chapter_soup, chapter_link, inCanto):
-        
-        chapter_soup = BeautifulSoup(str(chapter_soup).replace("<strong><strong>", "<strong>"), 'html.parser')
-        chapter_soup = BeautifulSoup(str(chapter_soup).replace("</strong></strong>", "</strong>"), 'html.parser')
-
-        # Checks whether the chapter contains verses and calls writeVerse
-        if chapter_soup.find('dl', class_="r r-verse"):
-            chapter_soup = self.getSoup(chapter_link, 1)
-            self.writeVerse(chapter_soup, inCanto)
-            return
-        # Checks whether the chapter is a verse and calls writeVerse
-        elif chapter_soup.find('div', class_="r r-lang-en r-synonyms"):
-            self.writeVerse(chapter_soup, inCanto)
-            return
-        
-        for t in chapter_soup.find_all('div', class_=["r r-lang-en r-verse-text", "r r-lang-en r-paragraph", "r r-lang-en r-paragraph-intro", "r r-lang-en r-sub-chapter", "r r-lang-en r-paragraph-list", "r r-lang-en r-translation"]):
-            if 'r-paragraph-intro' in t['class']:
-                # Adjusts the markdown formatting for italicized intro paragraphs before writing
-                output = '*' + pypandoc.convert_text(str(t), 'markdown', format='html') + '*'
-                f.write(output)
-                continue
-            elif 'r-sub-chapter' in t['class']:
-                # Adjusts the markdown formatting for subtitles within the chapter before writing
-                output = '## ' + t.get_text().strip() + '\n'
-                f.write('\n' + output)
-                continue
-            elif 'r-verse-text' in t['class']:
-                output = pypandoc.convert_text(str(t), 'markdown', format='html')
-                output = output.replace("**", "*")
-                output = output.replace("*\\", "\\")
-                f.write(output)
-                continue
-            
-            output = pypandoc.convert_text(str(t), 'markdown', format='html')
-            # Fixes formatting issue
-            output = output.replace('*"', '"*')
-            f.write(output)
-
-    def getChapter(self, chapter, inCanto = 0):
-        chapter_link = chapter.find('a')
-        chapter_soup = self.getSoup(chapter_link)
-        
-        # Gets and formats the title of the chapter
-        if inCanto:
-            title = '## ' + str(chapter_link.get_text()).strip()
-            print('     Now getting: ' + str(chapter_link.get_text()).strip())
-        else:
-            title = '# ' + str(chapter_link.get_text()).strip()
-            print('Now getting: ' + str(chapter_link.get_text()).strip())
-        
-        f.write(title + '\n' + '\n')
-        self.writeChapter(chapter_soup, chapter_link, inCanto)
-
-    # Iterates through all the cantos and chapters within the book
-    def buildBook(self):
-
-        #If the book directly has verses:
-        if (self.soup).find('dl', class_="r r-verse"):
-            for chapter in (self.soup).find_all('div', class_=["bb r r-lang-en r-chapter", "r-verse"]):
-                self.getChapter(chapter)
-
-        #If the book has cantos:
-        elif (self.soup).find('div', class_=["bb r r-canto", "col-6 col-sm-4 col-md-3 col-lg-2 col-lg-15 text-center book-item"]):
-
-            for canto in (self.soup).find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter", "bb r r-canto", "col-6 col-sm-4 col-md-3 col-lg-2 col-lg-15 text-center book-item"]):
-                canto_soup = self.getSoup(canto.find('a'))
-                
-                # If-else block to account for some books having chapters outside cantos 
-                if ('r-canto' in canto['class']) or ('book-item' in canto['class']):
-                    
-                    # Gets and formats the title of the canto
-                    title = '# ' + str((canto.find('a')).get_text()).strip()
-                    print('Inside ' + str((canto.find('a')).get_text()).strip() + ':')
-                    
-                    f.write(title + '\n' + '\n')
-
-                    for chapter in canto_soup.find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter"] ):
-                        self.getChapter(chapter, 1)
-                
-                else:
-                    self.getChapter(canto)
-        
-        # If the book doesn't have cantos
-        else:
-            for chapter in (self.soup).find_all('div', class_=["bb r r-lang-en r-chapter", "r bb r-lang-en r-chapter"]):
-                self.getChapter(chapter)
-
-
-###### Main Function (cannot implement as 'def main:' due to opened file)
-
-print("\nVedabase-ebook-maker v0.3.0\n \nPlease enter a valid url from vedabase.io below.")
-
-# User input for url of the book
-
-book_url = str(input("Enter url:" ))
-print("\n")
-
-try:
-    book = Book(book_url)
-    book.buildBook()
-    f.close()
-
-    # Creates name of the ebook file
-    f = open('VedabaseEbookTempFile.txt', 'r', encoding="utf-8")
-    ebookName = str(f.readline().split('%')[1]).strip() + '.epub'
-    ebookName = ebookName.replace(":", "")
-    ebookName = ebookName.replace("?", "")
-    f.close()
-
-    # Converts VedabaseEbookTempFile.txt to an ebook
-    pypandoc.convert_file('VedabaseEbookTempFile.txt', 'epub', format ="markdown", outputfile = ebookName)
-    print("\nDone!")
-
-    # Deletes VedabaseEbookTempFile.txt
-    if os.path.exists("VedabaseEbookTempFile.txt"):
-        os.remove("VedabaseEbookTempFile.txt")
-except:
-    f.close()
-    if os.path.exists("VedabaseEbookTempFile.txt"):
-        os.remove("VedabaseEbookTempFile.txt")
-    print("\nSorry there was an error! Please report to svaidya0 on GitHub, thank you :)")
+# Createst the ebook file
+filename = str(title.replace(':', '') + '.epub')
+zipObj = ZipFile(filename, 'w')
+zipObj.write('epub_title.xhtml')
+zipObj.write('epub_contents.xhtml')
+zipObj.write('epub_main.xhtml')
+zipObj.write('package.opf')
+zipObj.write('mimetype')
+zipObj.close()
+os.remove('epub_title.xhtml')
+os.remove('epub_contents.xhtml')
+os.remove('epub_main.xhtml')
+os.remove('package.opf')
+os.remove('mimetype')
+print('\nDone!')
